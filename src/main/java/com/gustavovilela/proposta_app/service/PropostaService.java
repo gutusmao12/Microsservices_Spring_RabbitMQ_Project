@@ -5,7 +5,6 @@ import com.gustavovilela.proposta_app.dto.PropostaResponseDto;
 import com.gustavovilela.proposta_app.entity.Proposta;
 import com.gustavovilela.proposta_app.mapper.PropostaMapper;
 import com.gustavovilela.proposta_app.repository.PropostaRepository;
-import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -16,14 +15,14 @@ public class PropostaService {
 
     private PropostaRepository propostaRepository;
 
-    private NotificacaoService notificacaoService;
+    private NotificacaoRabbitService notificacaoRabbitService;
 
     private String exchange;
 
-    public PropostaService(NotificacaoService notificacaoService,
+    public PropostaService(NotificacaoRabbitService notificacaoRabbitService,
                            PropostaRepository propostaRepository,
                            @Value("${rabbitmq.propostapendente.exchange}") String exchange) {
-        this.notificacaoService = notificacaoService;
+        this.notificacaoRabbitService = notificacaoRabbitService;
         this.propostaRepository = propostaRepository;
         this.exchange = exchange;
     }
@@ -32,10 +31,18 @@ public class PropostaService {
         Proposta proposta = PropostaMapper.INSTANCE.convertDtoToProposta(requestDto);
         propostaRepository.save(proposta);
 
-        PropostaResponseDto response = PropostaMapper.INSTANCE.convertEntityToDto(proposta);
-        notificacaoService.notificar(response, exchange);
+        notificarRabbitMQ(proposta);
 
-        return response;
+        return PropostaMapper.INSTANCE.convertEntityToDto(proposta);
+    }
+
+    private void notificarRabbitMQ(Proposta proposta) {
+        try {
+        notificacaoRabbitService.notificar(proposta, exchange);
+        } catch (RuntimeException ex) {
+            proposta.setIntegrada(false);
+            propostaRepository.save(proposta);
+        }
     }
 
     public List<PropostaResponseDto> obterProposta() {
